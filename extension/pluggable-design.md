@@ -38,40 +38,93 @@
 
 ### 设计
 
+#### 术语
+
+- **Extension Point**
+  - 由 Halo 定义的用于添加特定功能的接口。
+  - 扩展点应该在服务的核心功能和它所认为的集成之间的交叉点上。
+  - 扩展点是对服务的扩充，但不是影响服务的核心功能：区别在于，如果没有其核心功能，服务就无法运行，而扩展点对于特定的配置可能至关重要该服务最终是可选的。
+  - 扩展点应该小且可组合，并且在相互配合使用时，可为 Halo 提供比其各部分总和更大的价值。
+- **Extension**
+  - Extension Point（扩展点）的一种具体实现
+
 #### Backend
 
-通过 PluginManager 对插件进行管理
+##### 描述
 
-插件加载：
+插件启用时由 PluginManager 负责加载，包括 :
 
-1. 系统默认插件的加载
-2. 用户已启用的插件的加载
-3. Halo 运行时对用户启用的插件进行加载
-
-插件停用：
-
-1. 停用已注册的APIs
-2. 停用已注册的扩展点
-3. 停用已加载的静态资源
-4. 停用诸如监听器之类的其他资源
-
-插件卸载：
-
-1. 卸载已加载的类
-2. 清理插件静态资源缓存
-3. 清理插件配置数据和模型数据
-
-插件升级：
-
-通过插件的版本号及对 Halo 版本的依赖进行判断，提供检查更新机制。
-
-提供升级方式，主要考虑两种：
-
-1. 通过上传插件文件进行升级
-2. 通过插件仓库进行远程升级
+- APIs: 委托给 Request mapping registrar 管理
+- ExtensionPoint：委托给 Extension Finder管理
+- Static files
+- 类似manifest和role template的yaml
+- Listeners：委托给 PluginListenerRegistrar 管理
+- Spring bean components：委托给 SpringExtensionFactory 创建 Instance如果是单类则由 SingletonSpringExtensionFactory 管理
 
 ![image-20220507180723198](./assets/image-20220507180723198.png)
+
+##### 资源配置
+
+**plugin-manifest**
+
+```yaml
+apiVersion: extensions.halo.run/v1
+kind: Plugin
+metadata:
+  # 'name' must match the filename of the manifest. The name defines how
+  # the plugin is invoked
+  name: plugin-1
+  labels:
+    extensions.guqing.xyz/category: attachment
+spec:
+  # 'version' is a valid semantic version string (see semver.org). Note the prefix 'v' is required.
+  version: v0.0.1
+  requires: >=v2.0.0
+  author: guqing
+  pluginClass: xyz.guqing.plugin.potatoes.PotatoesApp
+  pluginDependencies:
+   - plugin-2
+  # 'homepage' usually links to the GitHub repository of the plugin
+  homepage: https://github.com/guqing/halo-plugin-1
+  # 'shortDescription' explains what the plugin does in only a few words
+  shortDescription: "this is a test plugin"
+  description: "Tell me more about this plugin."
+  license: MIT
+```
+
+**plugin role templates**
+
+如果需要对插件提供的 API 进行权限控制，可以定义 role template，当插件启用时会被加载以使用 Halo 的权限控制体系进行统一的 API 权限控制。
+
+```yaml
+apiVersion: halo.run/v1
+kind: Role
+metadata:
+  name: role-manage-plugin-apis
+  labels:
+    guqing.xyz/role-template: true
+  annotations:
+    guqing.xyz/dependencies: ["role-template-view-plugin-apis"]
+    guqing.xyz/module: "Test Plugin"
+    guqing.xyz/alias-name: "Test Plugin"
+rules:
+  - apiGroups: ["plugin1.guqing.xyz"]
+    resources: ["plugin-tests"]
+    verbs: ["*"]
+```
+
+##### ExtensionPoint 插件
+
+Halo 使用 [Java 插件框架 (PF4J)](https://github.com/pf4j/pf4j) 来表示服务的*扩展点* 接口。您可以创建一个插件来实现扩展点中声明的方法。基于扩展点创建插件有很多优点：
+
+- 这是最简单的 - 使用`@Extension`注解并实现你选择的扩展点中声明的方法
+- Halo 将插件加载到隔离的类路径中
+- 它的维护工作量最少
+- Halo 的更新不太可能破坏你的插件
+
+这里有一个 [POC可供预览](https://github.com/guqing/halo-plugin-experimental/tree/main/core/src/main/java/run/halo/app/extensions)
 
 #### Frontend
 
 TBD
+
